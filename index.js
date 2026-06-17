@@ -48,41 +48,41 @@ app.post('/auth/login', async(req,res) => {
   res.json({ token });
 });
 
-// Get all tasks
-app.get('/tasks', async (req, res ) => {
-  const result = await pool.query('SELECT * FROM tasks ORDER BY id');
+// Get all tasks - only the logged-in user's own tasks
+app.get('/tasks', authenticateToken, async (req, res ) => {
+  const result = await pool.query('SELECT * FROM tasks WHERE user_id =$1 ORDER BY id', [req.user.id]);
   res.json(result.rows);
 });
 
 // Get One task
-app.get('/tasks/:id', async (req, res) => {
-  const id = Number(req.params.id);
-  const result = await pool.query('SELECT * FROM tasks WHERE id = $1', [id]);
+// app.get('/tasks/:id', async (req, res) => {
+//   const id = Number(req.params.id);
+//   const result = await pool.query('SELECT * FROM tasks WHERE id = $1', [id]);
 
-  if (result.rows.length === 0) {
-    return res.status(404).json({ error: 'Task not found' });
-  }
+//   if (result.rows.length === 0) {
+//     return res.status(404).json({ error: 'Task not found' });
+//   }
 
-  res.json(result.rows[0]);
-});
+//   res.json(result.rows[0]);
+// });
 
-// POST - Create a new task - PROTECTED
+// POST - Create a new task - PROTECTED - tied to the logged-in user
 app.post('/tasks', authenticateToken,async (req,res) => {
   const { title } = req.body;
   if (!title) {
     return res.status(400).json({ error: 'Title is required' });
   }
 
-  const result = await pool.query('INSERT INTO tasks (title) VALUES ($1) RETURNING *', [title]);
+  const result = await pool.query('INSERT INTO tasks (title, user_id) VALUES ($1, $2) RETURNING *', [title, req.user.id]);
   res.status(201).json(result.rows[0]);
 });
 
-// PUT - Update a task - PROTECTED
+// PUT - Update a task - PROTECTED- only if it belongs to the logged-in user
 app.put('/tasks/:id', authenticateToken, async (req, res) => {
   const id = Number(req.params.id);
   const { title, done } = req.body;
 
-  const result = await pool.query('UPDATE tasks SET title = COALESCE($1, title), done = COALESCE($2, done) WHERE id = $3 RETURNING *', [title, done, id]);
+  const result = await pool.query('UPDATE tasks SET title = COALESCE($1, title), done = COALESCE($2, done) WHERE id = $3 AND user_id = $4 RETURNING *', [title, done, id, req.user.id]);
 
   if (result.rows.length === 0) {
     return res.status(404).json({ error: 'Task not found' });
@@ -91,10 +91,10 @@ app.put('/tasks/:id', authenticateToken, async (req, res) => {
   res.json(result.rows[0]);
 });
 
-//DELETE - Delete a task - PROTECTED
+//DELETE - Delete a task - PROTECTED - only if it belongs to this user
 app.delete('/tasks/:id', authenticateToken, async (req, res) => {
   const id = Number(req.params.id);
-  const result = await pool.query('DELETE FROM tasks WHERE id = $1 RETURNING *', [id]);
+  const result = await pool.query('DELETE FROM tasks WHERE id = $1 AND user_id = $2 RETURNING *', [id, req.user.id]);
 
   if (result.rows.length === 0) {
     return res.status(404).json({ error: 'Task not found' });
